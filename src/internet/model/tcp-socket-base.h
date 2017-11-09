@@ -48,6 +48,7 @@ class Packet;
 class TcpL4Protocol;
 class TcpHeader;
 class TcpCongestionOps;
+class TcpRecoveryOps;
 
 /**
  * \ingroup tcp
@@ -478,6 +479,13 @@ public:
    * \param algo Algorithm to be installed
    */
   void SetCongestionControlAlgorithm (Ptr<TcpCongestionOps> algo);
+
+  /**
+   * \brief Install a recovery algorithm on this socket
+   *
+   * \param recovery Algorithm to be installed
+   */
+  void SetRecoveryAlgorithm (Ptr<TcpRecoveryOps> recovery);
 
   // Necessary implementations of null functions from ns3::Socket
   virtual enum SocketErrno GetErrno (void) const;    // returns m_errno
@@ -981,7 +989,7 @@ protected:
   void AddOptions (TcpHeader& tcpHeader);
 
   /**
-   * \brief Read TCP options begore Ack processing
+   * \brief Read TCP options before Ack processing
    *
    * Timestamp and Window scale are managed in other pieces of code.
    *
@@ -1174,6 +1182,7 @@ protected:
   // Transmission Control Block
   Ptr<TcpSocketState>    m_tcb;               //!< Congestion control informations
   Ptr<TcpCongestionOps>  m_congestionControl; //!< Congestion control
+  Ptr<TcpRecoveryOps>    m_recoveryOps;       //!< Recovery Algorithm
 
   // Guesses over the other connection end
   bool m_isFirstPartialAck; //!< First partial ACK during RECOVERY

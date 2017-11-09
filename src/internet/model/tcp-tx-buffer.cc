@@ -112,7 +112,7 @@ TcpTxBuffer::GetTypeId (void)
  * initialized below is insignificant.
  */
 TcpTxBuffer::TcpTxBuffer (uint32_t n)
-  : m_maxBuffer (32768), m_size (0), m_sentSize (0), m_firstByteSeq (n)
+  : m_maxBuffer (32768), m_size (0), m_sentSize (0), m_lastSackedBytes (0), m_firstByteSeq (n)
 {
 }
 
@@ -663,6 +663,7 @@ TcpTxBuffer::Update (const TcpOptionSack::SackList &list)
   NS_LOG_FUNCTION (this);
 
   bool modified = false;
+  m_lastSackedBytes = 0;
   TcpOptionSack::SackList::const_iterator option_it;
   NS_LOG_INFO ("Updating scoreboard, got " << list.size () << " blocks to analyze");
   for (option_it = list.begin (); option_it != list.end (); ++option_it)
@@ -693,6 +694,7 @@ TcpTxBuffer::Update (const TcpOptionSack::SackList &list)
                 }
               else
                 {
+                  m_lastSackedBytes += current->GetSize ();
                   item->m_sacked = true;
                   NS_LOG_INFO ("Received block [" << b.first << ";" << b.second <<
                                ", checking sentList for block " << beginOfCurrentPacket <<
@@ -1140,6 +1142,12 @@ TcpTxBuffer::CraftSackOption (const SequenceNumber32 &seq, uint8_t available) co
     }
 
   return sackBlock;
+}
+
+uint32_t
+TcpTxBuffer::GetLastSackedBytes ()
+{
+  return m_lastSackedBytes;
 }
 
 std::ostream &

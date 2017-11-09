@@ -53,6 +53,7 @@
 #include "tcp-option-sack.h"
 #include "rtt-estimator.h"
 #include "tcp-congestion-ops.h"
+#include "tcp-recovery-ops.h"
 
 #include <math.h>
 #include <algorithm>
@@ -349,6 +350,7 @@ TcpSocketBase::TcpSocketBase (void)
     m_retxThresh (3),
     m_limitedTx (false),
     m_congestionControl (0),
+    m_recoveryOps (0),
     m_isFirstPartialAck (true),
     m_pacingTimer (Timer::REMOVE_ON_DESTROY)
 {
@@ -458,6 +460,11 @@ TcpSocketBase::TcpSocketBase (const TcpSocketBase& sock)
   if (sock.m_congestionControl)
     {
       m_congestionControl = sock.m_congestionControl->Fork ();
+    }
+
+  if (sock.m_recoveryOps)
+    {
+      m_recoveryOps = sock.m_recoveryOps->Fork ();
     }
 
   bool ok;
@@ -1563,14 +1570,9 @@ TcpSocketBase::EnterRecovery ()
   // (4.2) ssthresh = cwnd = (FlightSize / 2)
   m_tcb->m_ssThresh = m_congestionControl->GetSsThresh (m_tcb,
                                                         BytesInFlight ());
-  if (m_sackEnabled)
-    {
-      m_tcb->m_cWnd = m_tcb->m_ssThresh;
-    }
-  else
-    {
-      m_tcb->m_cWnd = m_tcb->m_ssThresh + m_dupAckCount * m_tcb->m_segmentSize;
-    }
+
+  m_recoveryOps->EnterRecovery (m_tcb, UnAckDataCount (), m_sackEnabled,
+                             m_dupAckCount, BytesInFlight (), m_txBuffer->GetLastSackedBytes ());
 
   NS_LOG_INFO (m_dupAckCount << " dupack. Enter fast recovery mode." <<
                "Reset cwnd to " << m_tcb->m_cWnd << ", ssthresh to " <<
@@ -1604,12 +1606,16 @@ TcpSocketBase::DupAck ()
       NS_LOG_DEBUG ("OPEN -> DISORDER");
     }
 
-  if (!m_sackEnabled && m_tcb->m_congState == TcpSocketState::CA_RECOVERY)
+  if (m_tcb->m_congState == TcpSocketState::CA_RECOVERY)
     { // Increase cwnd for every additional dupack (RFC2582, sec.3 bullet #3)
-      m_tcb->m_cWnd += m_tcb->m_segmentSize;
+      m_recoveryOps->DoRecovery (m_tcb, UnAckDataCount (), m_sackEnabled,
+                                 m_dupAckCount, BytesInFlight (), m_txBuffer->GetLastSackedBytes ());
       NS_LOG_INFO (m_dupAckCount << " Dupack received in fast recovery mode."
                    "Increase cwnd to " << m_tcb->m_cWnd);
-      SendPendingData (m_connected);
+      if (!m_sackEnabled)
+        {
+          SendPendingData (m_connected);
+        }
     }
   else if (m_tcb->m_congState == TcpSocketState::CA_DISORDER)
     {
@@ -1790,12 +1796,13 @@ TcpSocketBase::ProcessAck (const SequenceNumber32 &ackNumber, bool scoreboardUpd
           if (!m_sackEnabled)
             {
               m_tcb->m_cWnd = SafeSubtraction (m_tcb->m_cWnd, bytesAcked);
-              if (segsAcked >= 1)
-                {
-                  m_tcb->m_cWnd += m_tcb->m_segmentSize;
-                }
             }
-
+          if (segsAcked >= 1)
+            {
+              uint32_t lastDeliveredBytes = bytesAcked + m_txBuffer->GetLastSackedBytes ();
+              m_recoveryOps->DoRecovery (m_tcb, UnAckDataCount (), m_sackEnabled,
+                                         m_dupAckCount, BytesInFlight (), lastDeliveredBytes);
+            }
           // This partial ACK acknowledge the fact that one segment has been
           // previously lost and now successfully received. All others have
           // been processed when they come under the form of dupACKs
@@ -1910,8 +1917,7 @@ TcpSocketBase::ProcessAck (const SequenceNumber32 &ackNumber, bool scoreboardUpd
               NewAck (ackNumber, true);
               // Follow NewReno procedures to exit FR if SACK is disabled
               // (RFC2582 sec.3 bullet #5 paragraph 2, option 1)
-              m_tcb->m_cWnd = std::min (m_tcb->m_ssThresh.Get (),
-                                        BytesInFlight () + m_tcb->m_segmentSize);
+              m_recoveryOps->ExitRecovery (m_tcb, BytesInFlight ());
               NS_LOG_DEBUG ("Leaving Fast Recovery; BytesInFlight() = " <<
                             BytesInFlight () << "; cWnd = " << m_tcb->m_cWnd);
             }
@@ -2814,6 +2820,12 @@ TcpSocketBase::SendDataPacket (SequenceNumber32 seq, uint32_t maxSize, bool with
     }
 
   UpdateRttHistory (seq, sz, isRetransmission);
+
+  // Update bytes sent during recovery phase
+  if(m_tcb->m_congState == TcpSocketState::CA_RECOVERY)
+    {
+      m_recoveryOps->UpdateBytesSent (sz);
+    }
 
   // Notify the application of the data being sent unless this is a retransmit
   if (seq + sz > m_tcb->m_highTxMark)
@@ -4003,6 +4015,13 @@ TcpSocketBase::SetCongestionControlAlgorithm (Ptr<TcpCongestionOps> algo)
 {
   NS_LOG_FUNCTION (this << algo);
   m_congestionControl = algo;
+}
+
+void
+TcpSocketBase::SetRecoveryAlgorithm (Ptr<TcpRecoveryOps> recovery)
+{
+  NS_LOG_FUNCTION (this << recovery);
+  m_recoveryOps = recovery;
 }
 
 Ptr<TcpSocketBase>

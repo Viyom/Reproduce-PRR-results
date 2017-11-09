@@ -332,6 +332,13 @@ public:
    */
   Ptr<const TcpOptionSack> CraftSackOption (const SequenceNumber32 &seq, uint8_t available) const;
 
+  /**
+   * \brief Returns size of data sacked in the last ack
+   *
+   * \return Total bytes of data sacked in the last ack
+   */
+  uint32_t GetLastSackedBytes ();
+
 private:
   friend std::ostream & operator<< (std::ostream & os, TcpTxBuffer const & tcpTxBuf);
 
@@ -489,6 +496,7 @@ private:
   uint32_t m_maxBuffer;  //!< Max number of data bytes in buffer (SND.WND)
   uint32_t m_size;       //!< Size of all data in this buffer
   uint32_t m_sentSize;   //!< Size of sent (and not discarded) segments
+  uint32_t m_lastSackedBytes;   //!< Size of data sacked in the last ack
 
   TracedValue<SequenceNumber32> m_firstByteSeq; //!< Sequence number of the first byte in data (SND.UNA)
 
