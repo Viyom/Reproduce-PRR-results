@@ -38,7 +38,7 @@ PrrRecovery::GetTypeId (void)
     .AddConstructor<PrrRecovery> ()
     .SetGroupName ("Internet")
     .AddAttribute ("ReductionBound", "Type of Reduction Bound",
-                   EnumValue (SSRB),
+                   EnumValue (CRB),
                    MakeEnumAccessor (&PrrRecovery::m_reductionBoundMode),
                    MakeEnumChecker (CRB, "CRB",
                                     SSRB, "SSRB"))

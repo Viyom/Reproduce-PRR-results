@@ -1179,6 +1179,9 @@ protected:
   uint32_t               m_retxThresh;   //!< Fast Retransmit threshold
   bool                   m_limitedTx;    //!< perform limited transmit
 
+  // Tracing
+  Time m_recoveryStartTime = Seconds (0.0);
+
   // Transmission Control Block
   Ptr<TcpSocketState>    m_tcb;               //!< Congestion control informations
   Ptr<TcpCongestionOps>  m_congestionControl; //!< Congestion control

@@ -1570,7 +1570,8 @@ TcpSocketBase::EnterRecovery ()
   // (4.2) ssthresh = cwnd = (FlightSize / 2)
   m_tcb->m_ssThresh = m_congestionControl->GetSsThresh (m_tcb,
                                                         BytesInFlight ());
-
+  m_recoveryStartTime = Simulator::Now ();
+  NS_LOG_WARN ("Enter: " << m_tcb->m_ssThresh << " " << m_bytesInFlight << " ");
   m_recoveryOps->EnterRecovery (m_tcb, UnAckDataCount (), m_sackEnabled,
                              m_dupAckCount, BytesInFlight (), m_txBuffer->GetLastSackedBytes ());
 
@@ -1890,7 +1891,7 @@ TcpSocketBase::ProcessAck (const SequenceNumber32 &ackNumber, bool scoreboardUpd
               m_congestionControl->CongestionStateSet (m_tcb, TcpSocketState::CA_OPEN);
               m_tcb->m_congState = TcpSocketState::CA_OPEN;
               exitedFastRecovery = true;
-
+              NS_LOG_WARN ("Exit: " <<  m_tcb->m_ssThresh << " " << m_tcb->m_cWnd << " " << (Simulator::Now () - m_recoveryStartTime).GetSeconds ());
               NS_LOG_DEBUG (segsAcked << " segments acked in CA_RECOVER, ack of " <<
                             ackNumber << ", exiting CA_RECOVERY -> CA_OPEN");
             }
@@ -3294,6 +3295,10 @@ TcpSocketBase::ReTxTimeout ()
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC (this << " ReTxTimeout Expired at time " << Simulator::Now ().GetSeconds ());
+  if (m_tcb->m_congState == TcpSocketState::CA_RECOVERY)
+  {
+    NS_LOG_WARN ("RTODuringRecovery " <<  m_tcb->m_ssThresh << " " << m_tcb->m_cWnd << " " << (Simulator::Now () - m_recoveryStartTime).GetSeconds ());
+  }
   // If erroneous timeout in closed/timed-wait state, just return
   if (m_state == CLOSED || m_state == TIME_WAIT)
     {
